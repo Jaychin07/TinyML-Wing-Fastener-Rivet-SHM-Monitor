@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TinyML Aircraft Fastener SHM Dashboard</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      padding: 24px;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .online { background: #065f46; color: #6ee7b7; }
+    .offline { background: #7f1d1d; color: #fca5a5; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #94a3b8;
+      letter-spacing: 0.06em;
+    }
+    .value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .chart-box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    canvas { width: 100%; height: 260px; display: block; }
+    .footer {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h2 style="margin:0;">Aircraft Wing Fastener SHM Monitor</h2>
+        <small style="color:#94a3b8;">ESP32 + MPU6050 Live MQTT Telemetry</small>
+      </div>
+      <span id="connBadge" class="badge offline">CONNECTING TO BROKER...</span>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">Exciter Motor State</div>
+        <div id="motorVal" class="value">--</div>
+      </div>
+      <div class="card">
+        <div class="label">Z-Axis Acceleration</div>
+        <div id="zVal" class="value">0.00 m/s²</div>
+      </div>
+      <div class="card">
+        <div class="label">Structural Health Class</div>
+        <div id="classVal" class="value" style="color:#34d399;">NORMAL</div>
+      </div>
+    </div>
+
+    <div class="chart-box">
+      <div class="label" style="margin-bottom:10px;">Real-Time Z-Axis Vibration Waveform (±20 m/s²)</div>
+      <canvas id="waveCanvas" width="900" height="260"></canvas>
+      <div class="footer">
+        <span>Topic: apu/fyp/jay/shm_wing_01/telemetry</span>
+        <span id="lastUpdate">Waiting for packets...</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const BROKER_URL = "wss://broker.hivemq.com:8884/mqtt";
+    const TOPIC = "apu/fyp/jay/shm_wing_01/telemetry";
+    const history = new Array(60).fill(0);
+
+    const canvas = document.getElementById("waveCanvas");
+    const ctx = canvas.getContext("2d");
+
+    function drawWave() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Center zero-g reference line
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+
+      // Acceleration trace
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      history.forEach((val, idx) => {
+        const x = (idx / (history.length - 1)) * canvas.width;
+        const clamped = Math.max(-20, Math.min(20, val));
+        const y = canvas.height / 2 - (clamped / 20) * (canvas.height / 2 - 16);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    drawWave();
+
+    const clientId = "web_shm_" + Math.random().toString(16).substring(2, 10);
+    const client = mqtt.connect(BROKER_URL, { clientId });
+
+    client.on("connect", () => {
+      const badge = document.getElementById("connBadge");
+      badge.textContent = "BROKER CONNECTED";
+      badge.className = "badge online";
+      client.subscribe(TOPIC);
+    });
+
+    client.on("offline", () => {
+      const badge = document.getElementById("connBadge");
+      badge.textContent = "BROKER OFFLINE";
+      badge.className = "badge offline";
+    });
+
+    client.on("message", (topic, message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        const z = parseFloat(data.z_accel) || 0;
+        const status = data.status || "UNKNOWN";
+
+        document.getElementById("motorVal").textContent = status;
+        document.getElementById("zVal").textContent = z.toFixed(2) + " m/s²";
+        document.getElementById("lastUpdate").textContent =
+          "Last packet: " + new Date().toLocaleTimeString();
+
+        const classEl = document.getElementById("classVal");
+        if (Math.abs(z) > 15.0) {
+          classEl.textContent = "ANOMALY (LOOSE)";
+          classEl.style.color = "#f87171";
+        } else {
+          classEl.textContent = "NORMAL";
+          classEl.style.color = "#34d399";
+        }
+
+        history.push(z);
+        history.shift();
+        drawWave();
+      } catch (err) {
+        console.error("Invalid JSON payload:", err);
+      }
+    });
+  </script>
+</body>
+</html>
