@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wing Rivet SHM Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column (~72ch) with a sticky section index on wide screens; spec tables and one scaled panel drawing. */
+:root {
+  --bg: #f5f7f9;
+  --surface: #ffffff;
+  --fg: #16202b;
+  --muted: #5b6875;
+  --line: #d8dfe6;
+  --accent: #0b6e8f;
+  --accent-soft: #e2f0f5;
+  --warn: #c2551b;
+  --ok: #2f7d4f;
+  --panel: #e9eef2;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #161e26; --fg: #e4eaf0; --muted: #93a1ae; --line: #2a3541;
+    --accent: #4fb3d4; --accent-soft: #15303b; --warn: #f0894f; --ok: #6cc28f; --panel: #1d2731;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #161e26; --fg: #e4eaf0; --muted: #93a1ae; --line: #2a3541;
+  --accent: #4fb3d4; --accent-soft: #15303b; --warn: #f0894f; --ok: #6cc28f; --panel: #1d2731;
+  color-scheme: dark;
+}
+body { margin: 0;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; }
+nav.toc { position: sticky; top: calc(24px + env(safe-area-inset-top, 0px)); align-self: start; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+nav.toc .eyebrow { margin-bottom: 8px; }
+nav.toc a { color: var(--muted); text-decoration: none; padding: 4px 0 4px 12px; border-left: 2px solid var(--line); }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); border-left-color: var(--accent); outline: none; }
+main { min-width: 0; display: flex; flex-direction: column; gap: 56px; }
+@media (max-width: 820px) { .wrap { grid-template-columns: minmax(0, 1fr); } nav.toc { display: none; } }
+
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(32px, 5vw, 46px); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 27px; font-weight: 600; }
+h3 { font-size: 19px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+section { display: flex; flex-direction: column; gap: 20px; scroll-margin-top: 24px; }
+.lede { font-size: 19px; color: var(--muted); max-width: 62ch; }
+
+header.hero { display: flex; flex-direction: column; gap: 16px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.classes { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { font-family: var(--font-mono); font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.normal { color: var(--ok); } .pill.loose { color: var(--warn); } .pill.rusted { color: var(--accent); }
+
+.ipo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.ipo > div { padding: 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ipo > div + div { border-left: 1px solid var(--line); }
+.ipo ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
+@media (max-width: 640px) { .ipo { grid-template-columns: minmax(0, 1fr); } .ipo > div + div { border-left: 0; border-top: 1px solid var(--line); } }
+
+.table-box { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--panel); }
+td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.drawing { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 12px; }
+.drawing svg { display: block; width: 100%; min-width: 520px; height: auto; }
+.caption { font-size: 14px; color: var(--muted); }
+
+.done { display: flex; flex-direction: column; gap: 28px; }
+.done article { display: flex; flex-direction: column; gap: 10px; }
+.done ul, .step ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 70ch; }
+.status { font-family: var(--font-mono); font-size: 12px; color: var(--ok); letter-spacing: 0.04em; }
+
+.steps { display: flex; flex-direction: column; gap: 0; counter-reset: step; }
+.step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; padding-bottom: 28px; position: relative; }
+.step::before { counter-increment: step; content: counter(step); font-family: var(--font-mono); font-weight: 500; width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); display: grid; place-items: center; background: var(--bg); position: relative; z-index: 1; }
+.step:not(:last-child)::after { content: ""; position: absolute; left: 16px; top: 34px; bottom: 0; width: 1.5px; background: var(--line); }
+.step > div { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding-top: 3px; }
+.conditions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.conditions > div { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; font-size: 14px; min-width: 0; }
+@media (max-width: 640px) { .conditions { grid-template-columns: minmax(0, 1fr); } }
+.note { border-left: 3px solid var(--warn); padding: 8px 14px; background: var(--surface); font-size: 15px; max-width: 70ch; }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Sections">
+    <span class="eyebrow">Contents</span>
+    <a href="#architecture">Architecture</a>
+    <a href="#hardware">Hardware &amp; pins</a>
+    <a href="#panel">Test panel</a>
+    <a href="#progress">Completed</a>
+    <a href="#roadmap">Roadmap</a>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <span class="eyebrow">APU Final Year Project · Structural Health Monitoring</span>
+      <h1>TinyML Anomaly Detection for Aircraft Fasteners and Rivets</h1>
+      <p class="lede">A real-time SHM prototype that detects early mechanical degradation in aerospace joints. Inference runs on the microcontroller itself, with no cloud compute needed to classify.</p>
+      <div class="classes" aria-label="Classification states">
+        <span class="pill normal">NORMAL</span>
+        <span class="pill loose">LOOSE</span>
+        <span class="pill rusted">RUSTED</span>
+      </div>
+    </header>
+
+    <section id="architecture">
+      <span class="eyebrow">System architecture</span>
+      <h2>Input, process, output</h2>
+      <p>A vibration motor sends a repeatable wave through a mock wing panel. An accelerometer records how the joint responds, and the ESP32 classifies that response.</p>
+      <div class="ipo">
+        <div>
+          <h3>Input: excitation and sensing</h3>
+          <ul>
+            <li>5 V PWM vibration motor, toggled by a debounced push button</li>
+            <li>Waves travel through a 3D-printed cantilevered wing panel</li>
+            <li>MPU6050 captures the vibration response along the acoustic path</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Process: edge AI</h3>
+          <ul>
+            <li>ESP32 acquires time-series acceleration windows</li>
+            <li>FFT spectral analysis extracts frequency features</li>
+            <li>Quantized Edge Impulse model classifies locally</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Output: visualization</h3>
+          <ul>
+            <li>SSD1306 OLED shows class, motor state and live Z-axis value</li>
+            <li>JSON packets stream over Wi-Fi and MQTT</li>
+            <li>Web dashboard renders telemetry remotely</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="hardware">
+      <span class="eyebrow">Hardware specification</span>
+      <h2>Components and pin map</h2>
+      <div class="table-box">
+        <table>
+          <thead><tr><th>Component</th><th>Role</th><th>Connection</th></tr></thead>
+          <tbody>
+            <tr><td>DOIT ESP32 DevKit V1</td><td>Acquisition, FFT, inference, Wi-Fi</td><td class="num">n/a</td></tr>
+            <tr><td>MPU6050 6-axis IMU</td><td>Vibration sensing</td><td class="num">I2C · SDA 21 · SCL 22</td></tr>
+            <tr><td>SSD1306 0.96" OLED</td><td>Local display</td><td class="num">I2C · 0x3C</td></tr>
+            <tr><td>5 V vibration motor module</td><td>Mechanical excitation</td><td class="num">PWM · GPIO 25</td></tr>
+            <tr><td>Push button (debounced)</td><td>Start / stop excitation</td><td class="num">GPIO 33</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-box">
+        <table>
+          <thead><tr><th>Telemetry</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>MQTT broker (browser)</td><td class="num">wss://broker.hivemq.com:8884/mqtt</td></tr>
+            <tr><td>Topic</td><td class="num">apu/fyp/jay/shm_wing_01/telemetry</td></tr>
+            <tr><td>Dashboard</td><td><code>index.html</code> (HTML5 Canvas + mqtt.js) on GitHub Pages</td></tr>
+            <tr><td>Fallback</td><td><code>dashboard.py</code> serial-to-web bridge</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="panel">
+      <span class="eyebrow">Mechanical CAD · SolidWorks</span>
+      <h2>Cantilevered wing test panel</h2>
+      <p>A right-wing specimen, 150 × 80 × 5 mm, printed in PLA at 100% infill and mounted to a 10 mm base in a U-channel profile. The motor, the five M4 rivet holes and the sensor all sit on one centerline, 23 mm from the trailing edge.</p>
+      <div class="drawing">
+        <svg viewBox="0 0 700 430" role="img" aria-label="Top view of the 150 by 80 millimetre panel, with motor at 15 mm, rivets at 35 to 115 mm and the MPU6050 at 135 mm along a centerline 23 mm from the trailing edge">
+          <defs>
+            <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="6" style="stroke: var(--muted); stroke-width: 1.2" />
+            </pattern>
+          </defs>
+          <!-- base -->
+          <rect x="20" y="40" width="40" height="320" fill="url(#hatch)" style="stroke: var(--muted)" />
+          <text x="40" y="384" text-anchor="middle" style="fill: var(--muted); font: 12px var(--font-mono)">base</text>
+          <!-- panel: 4 px per mm, x 0 mm at 60 -->
+          <rect x="60" y="40" width="600" height="320" style="fill: var(--panel); stroke: var(--fg); stroke-width: 1.5" />
+          <text x="360" y="30" text-anchor="middle" style="fill: var(--muted); font: 12px var(--font-mono)">leading edge</text>
+          <text x="360" y="384" text-anchor="middle" style="fill: var(--muted); font: 12px var(--font-mono)">trailing edge</text>
+          <!-- centerline y = 40 + (80-23)*4 = 268 -->
+          <line x1="60" y1="268" x2="660" y2="268" style="stroke: var(--accent); stroke-width: 1; stroke-dasharray: 10 4 2 4" />
+          <!-- 23 mm dimension -->
+          <line x1="680" y1="268" x2="680" y2="360" style="stroke: var(--muted)" />
+          <line x1="674" y1="268" x2="686" y2="268" style="stroke: var(--muted)" />
+          <line x1="674" y1="360" x2="686" y2="360" style="stroke: var(--muted)" />
+          <text x="676" y="318" text-anchor="end" style="fill: var(--muted); font: 12px var(--font-mono)">23</text>
+          <!-- motor at 15 mm -> x 120 -->
+          <rect x="106" y="254" width="28" height="28" rx="4" style="fill: var(--warn); stroke: none" />
+          <text x="120" y="236" text-anchor="middle" style="fill: var(--fg); font: 600 13px var(--font-body)">Motor</text>
+          <text x="120" y="306" text-anchor="middle" style="fill: var(--muted); font: 12px var(--font-mono)">15</text>
+          <!-- rivets at 35..115 mm -> x 200..520 -->
+          <g style="fill: var(--surface); stroke: var(--fg); stroke-width: 1.5">
+            <circle cx="200" cy="268" r="9" /><circle cx="280" cy="268" r="9" />
+            <circle cx="440" cy="268" r="9" /><circle cx="520" cy="268" r="9" />
+          </g>
+          <circle cx="360" cy="268" r="11" style="fill: var(--accent); stroke: var(--accent)" />
+          <circle cx="360" cy="268" r="20" style="fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3" />
+          <g style="fill: var(--muted); font: 12px var(--font-mono)" text-anchor="middle">
+            <text x="200" y="306">35</text><text x="280" y="306">55</text><text x="360" y="306">75</text><text x="440" y="306">95</text><text x="520" y="306">115</text>
+          </g>
+          <g style="fill: var(--fg); font: 13px var(--font-body)" text-anchor="middle">
+            <text x="200" y="244">R1</text><text x="280" y="244">R2</text><text x="440" y="244">R4</text><text x="520" y="244">R5</text>
+          </g>
+          <text x="360" y="232" text-anchor="middle" style="fill: var(--accent); font: 600 13px var(--font-body)">R3 · test bed</text>
+          <!-- sensor at 135 mm -> x 600 -->
+          <rect x="586" y="254" width="28" height="28" rx="2" style="fill: var(--fg); stroke: none" />
+          <text x="600" y="236" text-anchor="middle" style="fill: var(--fg); font: 600 13px var(--font-body)">MPU6050</text>
+          <text x="600" y="306" text-anchor="middle" style="fill: var(--muted); font: 12px var(--font-mono)">135</text>
+          <!-- 20 mm pitch callout -->
+          <line x1="200" y1="330" x2="280" y2="330" style="stroke: var(--muted)" />
+          <line x1="200" y1="324" x2="200" y2="336" style="stroke: var(--muted)" />
+          <line x1="280" y1="324" x2="280" y2="336" style="stroke: var(--muted)" />
+          <text x="240" y="348" text-anchor="middle" style="fill: var(--muted); font: 12px var(--font-mono)">20 pitch</text>
+          <!-- overall -->
+          <text x="360" y="414" text-anchor="middle" style="fill: var(--muted); font: 12px var(--font-mono)">150 × 80 × 5 mm · dimensions in mm from root</text>
+        </svg>
+      </div>
+      <p class="caption">Top view, drawn to scale at 4 px per mm. Rivet 3 at 75 mm is the universal test bed for every fastener condition.</p>
+      <div class="table-box">
+        <table>
+          <thead><tr><th>Feature</th><th>Specification</th></tr></thead>
+          <tbody>
+            <tr><td>Stress relief</td><td>R5.00 mm internal fillets</td></tr>
+            <tr><td>Side wall</td><td>Flush, to avoid false acoustic ringing</td></tr>
+            <tr><td>Surface detail</td><td>0.5 mm engraved flap lines</td></tr>
+            <tr><td>Rivet holes</td><td class="num">5 × M4 · Ø4.5 mm</td></tr>
+            <tr><td>Fastener</td><td>M4 socket head cap screw, chosen over hex heads for vertical Allen-key clearance in the 8 cm gap and for aerospace realism</td></tr>
+            <tr><td>Electronics mounting</td><td>Ø3.2 mm holes for M3 brass standoffs (+6 mm thread) with M3 hex nuts</td></tr>
+            <tr><td>Isolation</td><td>18.5–19.0 mm base recesses for 18 mm rubber feet</td></tr>
+            <tr><td>Power options evaluated</td><td>MB102 breadboard supply, MW69T 500 mA AC/DC adapter</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="progress">
+      <span class="eyebrow">Completed progress</span>
+      <h2>What's done</h2>
+      <div class="done">
+        <article>
+          <span class="status">COMPLETE</span>
+          <h3>Academic documentation (Chapter 1)</h3>
+          <ul>
+            <li>Chapter 1 draft to APU guidelines: Introduction, Problem Statement, Aim and Objectives (Bloom's Taxonomy level 5/6 verbs), Justification, Organization and Summary.</li>
+            <li>APA 7th citations grounding TinyML edge deployment and FFT feature extraction: Hoskere et al. (2023), Liu et al. (2021), Warden &amp; Situnayake (2020), Goyal &amp; Pabla (2020).</li>
+            <li>Input–Process–Output system block diagram, ready for Chapter 2.</li>
+          </ul>
+        </article>
+        <article>
+          <span class="status">COMPLETE</span>
+          <h3>Mechanical CAD and hardware specification</h3>
+          <ul>
+            <li>Cantilevered wing geometry finalized in SolidWorks, with acoustic centerline alignment of motor, rivets and sensor.</li>
+            <li>Fastener and mounting hardware specified, and power regulation options evaluated.</li>
+          </ul>
+        </article>
+        <article>
+          <span class="status">COMPLETE</span>
+          <h3>Embedded firmware and circuit simulation</h3>
+          <ul>
+            <li>Schematic validated in Proteus, then moved to Wokwi in VS Code (<code>wokwi.toml</code>, <code>diagram.json</code>, Arduino IDE <code>.bin</code>/<code>.elf</code>) for native ESP32 simulation without 64-bit DLL errors.</li>
+            <li><code>sketch.ino</code> tested: I2C setup, live OLED telemetry, MPU6050 polling, debounced button toggle, PWM motor/LED control, Wi-Fi and MQTT JSON publishing via <code>PubSubClient</code>.</li>
+          </ul>
+        </article>
+        <article>
+          <span class="status">COMPLETE</span>
+          <h3>Cloud telemetry and web dashboard</h3>
+          <ul>
+            <li>Serverless MQTT pipeline: <code>index.html</code> with HTML5 Canvas and mqtt.js over secure WebSockets, ready for GitHub Pages.</li>
+            <li>Local Python <code>dashboard.py</code> serial-to-web fallback.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <span class="eyebrow">Planned implementation</span>
+      <h2>Roadmap</h2>
+      <div class="steps">
+        <div class="step"><div>
+          <h3>3D printing and prototype assembly</h3>
+          <ul>
+            <li>Export the SolidWorks assembly to <code>.STL</code> and print in PLA at 100% infill.</li>
+            <li>Mount the ESP32, MPU6050, OLED, button and motor with M3 standoffs, M3 nuts, M4 socket head bolts and rubber feet.</li>
+          </ul>
+        </div></div>
+        <div class="step"><div>
+          <h3>Vibration data collection and model training</h3>
+          <p>Controlled vibration sweeps at Rivet 3 across three fastener conditions:</p>
+          <div class="conditions">
+            <div><span class="pill normal" style="align-self:start">NORMAL</span>Fully tightened M4 socket head bolt with metal washer.</div>
+            <div><span class="pill loose" style="align-self:start">LOOSE</span>Partially backed-off, untorqued M4 bolt that introduces mechanical play.</div>
+            <div><span class="pill rusted" style="align-self:start">RUSTED</span>Corroded fastener, or rubber/nylon damping washer, simulating joint stiffness loss.</div>
+          </div>
+          <ul>
+            <li>Stream labelled 3-axis samples into Edge Impulse at <span class="mono">100 Hz</span> in <span class="mono">1000–2000 ms</span> windows.</li>
+            <li>Configure a Spectral Analysis (FFT) block and neural network classifier, check the confusion matrix, and export the quantized C++ Arduino library.</li>
+          </ul>
+        </div></div>
+        <div class="step"><div>
+          <h3>Edge inference and live deployment</h3>
+          <ul>
+            <li>Embed the classifier in <code>sketch.ino</code> so the OLED and MQTT JSON show the live class and confidence.</li>
+            <li>Deploy <code>index.html</code> to GitHub Pages and switch Wi-Fi from <code>Wokwi-GUEST</code> to a physical hotspot or router.</li>
+          </ul>
+        </div></div>
+        <div class="step"><div>
+          <h3>Thesis and experimental evaluation</h3>
+          <ul>
+            <li>Chapter 1: change "Arduino Nano" to "ESP32" in the abstract.</li>
+            <li>Chapter 2: implementation, hardware and software justification, Fritzing schematic, SolidWorks CAD.</li>
+            <li>Chapter 3: experimental methodology and test matrix.</li>
+            <li>Chapter 4: FFT spectral results, classification accuracy, inference latency.</li>
+            <li>Chapter 5: conclusion and future recommendations.</li>
+          </ul>
+        </div></div>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>
