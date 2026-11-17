@@ -1,0 +1,7 @@
+[wokwi]
+version = 1
+elf = "sketch/build/esp32.esp32.esp32doit-devkit-v1/sketch.ino.elf"
+firmware = "sketch/build/esp32.esp32.esp32doit-devkit-v1/sketch.ino.bin"
+
+[serial]
+server = 4000

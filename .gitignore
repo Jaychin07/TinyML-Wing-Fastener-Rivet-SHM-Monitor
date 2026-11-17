@@ -1,0 +1,5 @@
+# Arduino / Wokwi build output
+build/
+*.bin
+*.elf
+*.map
